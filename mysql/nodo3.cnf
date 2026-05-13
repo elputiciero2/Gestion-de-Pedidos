@@ -1,0 +1,14 @@
+[mysqld]
+server-id=3
+bind-address=0.0.0.0
+binlog_format=ROW
+default_storage_engine=InnoDB
+innodb_autoinc_lock_mode=2
+wsrep_on=ON
+wsrep_provider=/usr/lib/galera/libgalera_smm.so
+wsrep_cluster_name=gestion_pedidos_cluster
+wsrep_cluster_address=gcomm://mysql-nodo-1,mysql-nodo-2,mysql-nodo-3
+wsrep_node_name=mysql-nodo-3
+wsrep_node_address=mysql-nodo-3
+wsrep_sst_method=rsync
+wsrep_sst_auth=root:root_clave

@@ -1,0 +1,12 @@
+.git
+.venv
+venv
+frontend/node_modules
+frontend/dist
+backend/.pytest_cache
+backend/__pycache__
+backend/tests/__pycache__
+frontend/__pycache__
+frontend/.pytest_cache
+mysql/*.ibd
+mysql/*.sdi

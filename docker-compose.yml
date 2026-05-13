@@ -1,0 +1,159 @@
+services:
+  mysql-nodo-1:
+    image: mariadb:11.4
+    entrypoint: ["/usr/local/bin/nodo1-entrypoint.sh"]
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_clave}
+      MARIADB_DATABASE: ${MYSQL_DATABASE:-pedidos}
+      MARIADB_USER: ${MYSQL_USER:-pedidos_usuario}
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD:-pedidos_clave}
+    volumes:
+      - mysql_nodo_1:/var/lib/mysql
+      - ./mysql/nodo1.cnf:/etc/mysql/conf.d/cluster.cnf:ro
+      - ./mysql/nodo1-entrypoint.sh:/usr/local/bin/nodo1-entrypoint.sh:ro
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -uroot -p$${MARIADB_ROOT_PASSWORD:-root_clave}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - gestion_pedidos_red
+
+  mysql-nodo-2:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_clave}
+      MARIADB_DATABASE: ${MYSQL_DATABASE:-pedidos}
+      MARIADB_USER: ${MYSQL_USER:-pedidos_usuario}
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD:-pedidos_clave}
+    volumes:
+      - mysql_nodo_2:/var/lib/mysql
+      - ./mysql/nodo2.cnf:/etc/mysql/conf.d/cluster.cnf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -uroot -p$${MARIADB_ROOT_PASSWORD:-root_clave}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - gestion_pedidos_red
+
+  mysql-nodo-3:
+    image: mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_clave}
+      MARIADB_DATABASE: ${MYSQL_DATABASE:-pedidos}
+      MARIADB_USER: ${MYSQL_USER:-pedidos_usuario}
+      MARIADB_PASSWORD: ${MYSQL_PASSWORD:-pedidos_clave}
+    volumes:
+      - mysql_nodo_3:/var/lib/mysql
+      - ./mysql/nodo3.cnf:/etc/mysql/conf.d/cluster.cnf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -uroot -p$${MARIADB_ROOT_PASSWORD:-root_clave}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - gestion_pedidos_red
+
+  phpmyadmin:
+    image: phpmyadmin:5-apache
+    depends_on:
+      mysql-nodo-1:
+        condition: service_healthy
+    environment:
+      PMA_HOST: mysql-nodo-1
+      PMA_PORT: 3306
+      PMA_ARBITRARY: 1
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_clave}
+    ports:
+      - "${PMA_PORT:-8081}:80"
+    networks:
+      - gestion_pedidos_red
+
+  backend-nodo-1:
+    build:
+      context: ./backend
+    command: ["uvicorn", "app.main:aplicacion", "--host", "0.0.0.0", "--port", "8001"]
+    environment:
+      NOMBRE_APP: gestion-pedidos
+      ENTORNO: produccion
+      RUTA_API: /api
+      LLAVE_SECRETA: ${JWT_SECRETO:-cambia-esta-llave}
+      ALGORITMO_JWT: ${JWT_ALGORITMO:-HS256}
+      MINUTOS_TOKEN: ${JWT_EXPIRACION_MINUTOS:-480}
+      CREAR_TABLAS: "true"
+      ORIGENES_CORS: http://localhost,http://localhost:80,http://localhost:8080
+      DATABASE_URLS: mysql+pymysql://${MYSQL_USER:-pedidos_usuario}:${MYSQL_PASSWORD:-pedidos_clave}@mysql-nodo-1:3306/${MYSQL_DATABASE:-pedidos},mysql+pymysql://${MYSQL_USER:-pedidos_usuario}:${MYSQL_PASSWORD:-pedidos_clave}@mysql-nodo-2:3306/${MYSQL_DATABASE:-pedidos},mysql+pymysql://${MYSQL_USER:-pedidos_usuario}:${MYSQL_PASSWORD:-pedidos_clave}@mysql-nodo-3:3306/${MYSQL_DATABASE:-pedidos}
+    depends_on:
+      mysql-nodo-1:
+        condition: service_healthy
+      mysql-nodo-2:
+        condition: service_healthy
+      mysql-nodo-3:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/api/salud')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - gestion_pedidos_red
+
+  backend-nodo-2:
+    build:
+      context: ./backend
+    command: ["uvicorn", "app.main:aplicacion", "--host", "0.0.0.0", "--port", "8002"]
+    environment:
+      NOMBRE_APP: gestion-pedidos
+      ENTORNO: produccion
+      RUTA_API: /api
+      LLAVE_SECRETA: ${JWT_SECRETO:-cambia-esta-llave}
+      ALGORITMO_JWT: ${JWT_ALGORITMO:-HS256}
+      MINUTOS_TOKEN: ${JWT_EXPIRACION_MINUTOS:-480}
+      CREAR_TABLAS: "true"
+      ORIGENES_CORS: http://localhost,http://localhost:80,http://localhost:8080
+      DATABASE_URLS: mysql+pymysql://${MYSQL_USER:-pedidos_usuario}:${MYSQL_PASSWORD:-pedidos_clave}@mysql-nodo-1:3306/${MYSQL_DATABASE:-pedidos},mysql+pymysql://${MYSQL_USER:-pedidos_usuario}:${MYSQL_PASSWORD:-pedidos_clave}@mysql-nodo-2:3306/${MYSQL_DATABASE:-pedidos},mysql+pymysql://${MYSQL_USER:-pedidos_usuario}:${MYSQL_PASSWORD:-pedidos_clave}@mysql-nodo-3:3306/${MYSQL_DATABASE:-pedidos}
+    depends_on:
+      mysql-nodo-1:
+        condition: service_healthy
+      mysql-nodo-2:
+        condition: service_healthy
+      mysql-nodo-3:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/api/salud')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - gestion_pedidos_red
+
+  nginx:
+    build:
+      context: .
+      dockerfile: nginx/Dockerfile
+    depends_on:
+      backend-nodo-1:
+        condition: service_healthy
+      backend-nodo-2:
+        condition: service_healthy
+    ports:
+      - "80:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - gestion_pedidos_red
+
+volumes:
+  mysql_nodo_1:
+  mysql_nodo_2:
+  mysql_nodo_3:
+
+networks:
+  gestion_pedidos_red:
+    driver: bridge
