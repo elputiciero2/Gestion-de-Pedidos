@@ -10,6 +10,9 @@ export function ProveedorAuth({ children }) {
   const [usuario, setUsuario] = useState(null)
   const [cargando, setCargando] = useState(true)
   const [error, setError] = useState(null)
+  const [estadoConexion, establecerEstadoConexion] = useState('conectado')
+  const [intentosReconexion, establecerIntentosReconexion] = useState(0)
+  const [tiempoUltimaConexion, establecerTiempoUltimaConexion] = useState(Date.now())
 
   const limpiarSesion = () => {
     localStorage.removeItem(CLAVE_TOKEN)
@@ -38,6 +41,39 @@ export function ProveedorAuth({ children }) {
     cargarUsuario(tokenGuardado)
   }, [])
 
+  useEffect(() => {
+    const intervaloPolling = setInterval(async () => {
+      try {
+        const respuesta = await fetch('/api/monitoreo/nodos/salud', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token_acceso')}` }
+        })
+        
+        if (respuesta.ok) {
+          establecerEstadoConexion('conectado')
+          establecerIntentosReconexion(0)
+          establecerTiempoUltimaConexion(Date.now())
+        } else {
+          const tiempoSinConexion = Date.now() - tiempoUltimaConexion
+          if (tiempoSinConexion > 30000) {
+            establecerEstadoConexion('caído')
+          } else {
+            establecerEstadoConexion('reconectando')
+          }
+          establecerIntentosReconexion(prev => prev + 1)
+        }
+      } catch (error) {
+        const tiempoSinConexion = Date.now() - tiempoUltimaConexion
+        if (tiempoSinConexion > 30000) {
+          establecerEstadoConexion('caído')
+        } else {
+          establecerEstadoConexion('reconectando')
+        }
+      }
+    }, 5000)
+
+    return () => clearInterval(intervaloPolling)
+  }, [tiempoUltimaConexion])
+
   const iniciarSesion = async (credenciales) => {
     setError(null)
     const datos = await iniciarSesionApi(credenciales)
@@ -54,8 +90,8 @@ export function ProveedorAuth({ children }) {
   }
 
   const valor = useMemo(
-    () => ({ token, usuario, cargando, error, iniciarSesion, cerrarSesion, setError }),
-    [token, usuario, cargando, error]
+    () => ({ token, usuario, cargando, error, iniciarSesion, cerrarSesion, setError, estadoConexion, establecerEstadoConexion, intentosReconexion }),
+    [token, usuario, cargando, error, estadoConexion, intentosReconexion]
   )
 
   return <ContextoAuth.Provider value={valor}>{children}</ContextoAuth.Provider>

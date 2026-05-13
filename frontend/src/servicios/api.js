@@ -1,4 +1,114 @@
-const URL_BASE = import.meta.env.VITE_API_URL || ''
+class CircuitBreaker {
+  constructor(umbralFallos = 3, tiempoReintento = 30000) {
+    this.estado = 'CERRADO'
+    this.contadorFallos = 0
+    this.umbralFallos = umbralFallos
+    this.tiempoReintento = tiempoReintento
+    this.timestampApertura = null
+  }
+
+  registrarFallo() {
+    this.contadorFallos++
+    if (this.contadorFallos >= this.umbralFallos) {
+      this.estado = 'ABIERTO'
+      this.timestampApertura = Date.now()
+    }
+  }
+
+  registrarExito() {
+    this.contadorFallos = 0
+    this.estado = 'CERRADO'
+  }
+
+  puedeIntentarAhora() {
+    if (this.estado === 'CERRADO') {
+      return true
+    }
+    if (this.estado === 'ABIERTO') {
+      const tiempoTranscurrido = Date.now() - this.timestampApertura
+      if (tiempoTranscurrido >= this.tiempoReintento) {
+        this.estado = 'SEMI_ABIERTO'
+        return true
+      }
+      return false
+    }
+    return this.estado === 'SEMI_ABIERTO'
+  }
+
+  obtenerEstado() {
+    return this.estado
+  }
+}
+
+class RetryManager {
+  constructor(maxReintentos = Infinity) {
+    this.intentos = 0
+    this.maxReintentos = maxReintentos
+  }
+
+  calcularDelay(numeroIntento) {
+    if (numeroIntento >= 5) {
+      return 60000
+    }
+    const delayMs = Math.pow(2, numeroIntento) * 1000
+    return Math.min(delayMs, 60000)
+  }
+
+  registrarIntento() {
+    this.intentos++
+  }
+
+  registrarExito() {
+    this.intentos = 0
+  }
+
+  obtenerIntentos() {
+    return this.intentos
+  }
+
+  hayIntentosPendientes() {
+    return true
+  }
+}
+
+const circuitBreaker = new CircuitBreaker(3, 30000)
+const retryManager = new RetryManager()
+
+async function realizarLlamadaConReintentos(url, opciones = {}) {
+  if (!circuitBreaker.puedeIntentarAhora()) {
+    throw new Error(`Circuit breaker abierto. Reintentando en ${30}s`)
+  }
+
+  try {
+    const respuesta = await fetch(url, opciones)
+    
+    if (!respuesta.ok && respuesta.status >= 500) {
+      throw new Error(`Error del servidor: ${respuesta.status}`)
+    }
+    
+    circuitBreaker.registrarExito()
+    retryManager.registrarExito()
+    
+    return respuesta
+  } catch (error) {
+    const delay = retryManager.calcularDelay(retryManager.obtenerIntentos())
+    retryManager.registrarIntento()
+    
+    console.log(`Reintentando en ${delay}ms (intento ${retryManager.obtenerIntentos()} de ∞)`)
+    
+    circuitBreaker.registrarFallo()
+    
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        realizarLlamadaConReintentos(url, opciones)
+          .then(resolve)
+          .catch(reject)
+      }, delay)
+    })
+  }
+}
+
+const URL_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || ''
 
 const construirUrl = (ruta) => `${URL_BASE}${ruta}`
 
@@ -99,3 +209,5 @@ export const recuperarMonitoreo = ({ servicio } = {}) =>
       servicio: servicio || null
     })
   })
+
+export { CircuitBreaker, RetryManager, realizarLlamadaConReintentos }
