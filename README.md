@@ -85,6 +85,20 @@ flowchart LR
     B2 --> D3
     P[phpMyAdmin 8081] --> D1
 ```
+## Arquitectura Distribuida
+
+El sistema implementa una arquitectura distribuida basada en:
+
+- Balanceador NGINX
+- Dos nodos FastAPI
+- Clúster MariaDB Galera
+- Frontend React
+- Monitoreo centralizado
+
+Flujo:
+
+Usuario → NGINX → Backend → Base de Datos
+```
 
 ## Diseño operativo
 
