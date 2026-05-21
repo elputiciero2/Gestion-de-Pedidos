@@ -186,3 +186,53 @@ PMA_PORT=8081
 - El nodo `mysql-nodo-1` usa un arranque guiado para recuperar el estado Galera cuando el volumen quedó marcado como no seguro para bootstrap.
 - phpMyAdmin se expone en un puerto dedicado para no mezclarlo con la SPA.
 - El puerto de phpMyAdmin se puede cambiar con `PMA_PORT`.
+
+## Autenticación 
+**Código de Prueba**:
+```python
+# test_jwt_autenticacion.py
+import pytest
+from backend.utils.jwt_handler import generar_token, validar_token
+from datetime import datetime, timedelta
+
+def test_generar_token_valido():
+    """Genera un token JWT válido"""
+    token = generar_token(
+        usuario_id=1,
+        correo="test@example.com",
+        rol="admin"
+    )
+    assert token is not None
+    assert len(token) > 50  # Los JWT son largos
+
+def test_validar_token_correcto():
+    """Token válido pasa validación"""
+    token = generar_token(
+        usuario_id=1,
+        correo="test@example.com",
+        rol="admin"
+    )
+    payload = validar_token(token)
+    assert payload["usuario_id"] == 1
+    assert payload["correo"] == "test@example.com"
+    assert payload["rol"] == "admin"
+
+def test_validar_token_expirado():
+    """Token expirado es rechazado"""
+    # Simular token expirado (haciendo uno con exp = pasado)
+    token_expirado = generar_token(
+        usuario_id=1,
+        correo="test@example.com",
+        rol="admin",
+        expiracion_minutos=-60  # Expirado hace 1 hora
+    )
+    with pytest.raises(Exception) as excinfo:
+        validar_token(token_expirado)
+    assert "expirado" in str(excinfo.value).lower()
+
+def test_validar_token_corrupto():
+    """Token corrupto es rechazado"""
+    token_corrupto = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...INVALIDO"
+    with pytest.raises(Exception):
+        validar_token(token_corrupto)
+```
